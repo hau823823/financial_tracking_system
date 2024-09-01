@@ -1,6 +1,7 @@
 package mq
 
 import (
+	"fintrack/config"
 	"fmt"
 	"log"
 
@@ -16,12 +17,6 @@ type MQProducer interface {
 // MQConsumer 定義 RabbitMQ 消費者接口
 type MQConsumer interface {
 	ConsumeMessages() error
-}
-
-// RabbitMQConfig 定義 RabbitMQ 配置結構
-type RabbitMQConfig struct {
-	URL   string
-	Queue string
 }
 
 // RabbitMQClient 實現了 MQProducer 和 MQConsumer 接口
@@ -43,7 +38,7 @@ type MessageHandler interface {
 }
 
 // NewMQProducer 創建並返回一個 MQProducer 實例，並使用 RabbitMQ 作為消息隊列
-func NewMQProducer(config RabbitMQConfig) (MQProducer, error) {
+func NewMQProducer(config config.RabbitMQConfig) (MQProducer, error) {
 	return NewRabbitMQProducer(config)
 }
 
@@ -52,7 +47,7 @@ func NewMQConsumer(client *RabbitMQClient, handler MessageHandler) MQConsumer {
 }
 
 // NewRabbitMQProducer 創建並返回一個 RabbitMQ 生產者實例
-func NewRabbitMQProducer(config RabbitMQConfig) (*RabbitMQClient, error) {
+func NewRabbitMQProducer(config config.RabbitMQConfig) (*RabbitMQClient, error) {
 	conn, err := amqp.Dial(config.URL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)

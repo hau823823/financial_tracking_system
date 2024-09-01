@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fintrack/config"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -15,30 +16,22 @@ type Cache interface {
 	Close() error
 }
 
-// RedisConfig 用於封裝 Redis 的配置參數
-type RedisConfig struct {
-	RedisAddr     string
-	RedisPassword string
-	RedisDB       int
-}
-
-
 // Redis 實現 Cache 接口
 type Redis struct {
 	client *redis.Client
 }
 
 // NewCache 創建並返回一個 Cache 實例，並使用 Redis 作為緩存
-func NewCache(config RedisConfig) Cache {
+func NewCache(config config.RedisConfig) Cache {
 	return NewRedis(config)
 }
 
 // NewRedisCache 使用 RedisConfig 來初始化 RedisCache
-func NewRedis(config RedisConfig) *Redis {
+func NewRedis(config config.RedisConfig) *Redis {
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     config.RedisAddr,
-		Password: config.RedisPassword,
-		DB:       config.RedisDB,
+		Addr:     config.Addr,
+		Password: config.Password,
+		DB:       config.DB,
 	})
 	return &Redis{client: rdb}
 }
