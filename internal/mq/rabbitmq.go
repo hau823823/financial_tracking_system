@@ -1,63 +1,102 @@
 package mq
 
 import (
-	"encoding/json"
-	"fintrack/internal/db"
-	"fintrack/internal/entity"
+	"fmt"
 	"log"
 
 	"github.com/streadway/amqp"
 )
 
-// MQ 生產者接口
+// MQProducer 定義生產者接口
 type MQProducer interface {
 	SendMessage(body []byte) error
-	Close()
+	Close() error
 }
 
-// RabbitMQ 生產者實現
-type RabbitMQProducer struct {
+// MQConsumer 定義 RabbitMQ 消費者接口
+type MQConsumer interface {
+	ConsumeMessages() error
+}
+
+// RabbitMQConfig 定義 RabbitMQ 配置結構
+type RabbitMQConfig struct {
+	URL   string
+	Queue string
+}
+
+// RabbitMQClient 實現了 MQProducer 和 MQConsumer 接口
+type RabbitMQClient struct {
 	connection *amqp.Connection
 	channel    *amqp.Channel
-	queueName  string
+	queue      amqp.Queue
 }
 
-func NewRabbitMQProducer(url, queueName string) (*RabbitMQProducer, error) {
-	conn, err := amqp.Dial(url)
+// RabbitMQConsumer 實現了 MQConsumer 接口，使用依賴注入來處理消息
+type RabbitMQConsumer struct {
+	client  *RabbitMQClient
+	handler MessageHandler // 注入具體的消息處理邏輯
+}
+
+// MessageHandler 定義消息處理函數的接口
+type MessageHandler interface {
+	HandleMessage(body []byte) error
+}
+
+// NewMQProducer 創建並返回一個 MQProducer 實例，並使用 RabbitMQ 作為消息隊列
+func NewMQProducer(config RabbitMQConfig) (MQProducer, error) {
+	return NewRabbitMQProducer(config)
+}
+
+func NewMQConsumer(client *RabbitMQClient, handler MessageHandler) MQConsumer {
+	return NewRabbitMQConsumer(client, handler)
+}
+
+// NewRabbitMQProducer 創建並返回一個 RabbitMQ 生產者實例
+func NewRabbitMQProducer(config RabbitMQConfig) (*RabbitMQClient, error) {
+	conn, err := amqp.Dial(config.URL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
 	}
 
 	ch, err := conn.Channel()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open channel: %w", err)
 	}
 
-	_, err = ch.QueueDeclare(
-		queueName,
-		true,
-		false,
-		false,
-		false,
-		nil,
+	q, err := ch.QueueDeclare(
+		config.Queue, // 使用配置中的 QueueName
+		true,         // durable
+		false,        // delete when unused
+		false,        // exclusive
+		false,        // no-wait
+		nil,          // arguments
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to declare queue: %w", err)
 	}
 
-	return &RabbitMQProducer{
+	return &RabbitMQClient{
 		connection: conn,
 		channel:    ch,
-		queueName:  queueName,
+		queue:      q,
 	}, nil
 }
 
-func (p *RabbitMQProducer) SendMessage(body []byte) error {
-	err := p.channel.Publish(
-		"",
-		p.queueName,
-		false,
-		false,
+// NewRabbitMQConsumer 創建並返回一個 RabbitMQ 消費者實例
+func NewRabbitMQConsumer(client *RabbitMQClient, handler MessageHandler) *RabbitMQConsumer {
+	return &RabbitMQConsumer{
+		client:  client,
+		handler: handler,
+	}
+}
+
+// SendMessage 發送消息到 RabbitMQ
+func (c *RabbitMQClient) SendMessage(body []byte) error {
+	err := c.channel.Publish(
+		"",           // exchange
+		c.queue.Name, // routing key
+		false,        // mandatory
+		false,        // immediate
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        body,
@@ -68,80 +107,42 @@ func (p *RabbitMQProducer) SendMessage(body []byte) error {
 	return err
 }
 
-func (p *RabbitMQProducer) Close() {
-	p.channel.Close()
-	p.connection.Close()
-}
-
-// RabbitMQ 消費者實現
-type RabbitMQConsumer struct {
-	connection *amqp.Connection
-	channel    *amqp.Channel
-	queueName  string
-	repo       db.TransactionRepository
-}
-
-func NewRabbitMQConsumer(url, queueName string, repo db.TransactionRepository) (*RabbitMQConsumer, error) {
-	conn, err := amqp.Dial(url)
-	if err != nil {
-		return nil, err
-	}
-
-	ch, err := conn.Channel()
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = ch.QueueDeclare(
-		queueName,
-		true,
-		false,
-		false,
-		false,
-		nil,
+// ConsumeMessages 消費 RabbitMQ 隊列中的消息
+func (c *RabbitMQConsumer) ConsumeMessages() error {
+	msgs, err := c.client.channel.Consume(
+		c.client.queue.Name, // queue
+		"",                  // consumer
+		true,                // auto-ack
+		false,               // exclusive
+		false,               // no-local
+		false,               // no-wait
+		nil,                 // args
 	)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to consume messages: %w", err)
 	}
 
-	return &RabbitMQConsumer{
-		connection: conn,
-		channel:    ch,
-		queueName:  queueName,
-		repo:       repo,
-	}, nil
+	go func() {
+		for d := range msgs {
+			if err := c.handler.HandleMessage(d.Body); err != nil {
+				log.Printf("Failed to handle message: %v", err)
+			}
+		}
+	}()
+
+	log.Printf("Waiting for messages. To exit press CTRL+C")
+	select {}
 }
 
-func (c *RabbitMQConsumer) ConsumeMessages() {
-	msgs, err := c.channel.Consume(
-		c.queueName,
-		"",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Printf("Failed to start consuming messages: %v", err)
-		return
+// Close 關閉 RabbitMQ 連接和通道
+func (c *RabbitMQClient) Close() error {
+	if err := c.channel.Close(); err != nil {
+		log.Printf("Failed to close channel: %v", err)
+		return err
 	}
-
-	for msg := range msgs {
-		var tx entity.Transaction
-		if err := json.Unmarshal(msg.Body, &tx); err != nil {
-			log.Printf("Failed to unmarshal transaction message: %v", err)
-			continue
-		}
-
-		// 將交易數據寫入資料庫
-		if err := c.repo.SaveTransaction(tx); err != nil {
-			log.Printf("Failed to save transaction to database: %v", err)
-		}
+	if err := c.connection.Close(); err != nil {
+		log.Printf("Failed to close connection: %v", err)
+		return err
 	}
-}
-
-func (c *RabbitMQConsumer) Close() {
-	c.channel.Close()
-	c.connection.Close()
+	return nil
 }

@@ -21,12 +21,12 @@ type TransactionService interface {
 }
 
 type transactionService struct {
-	repo     db.TransactionRepository
+	repo     db.DBClient
 	cache    cache.Cache
 	producer mq.MQProducer
 }
 
-func NewTransactionService(repo db.TransactionRepository, cache cache.Cache, producer mq.MQProducer) TransactionService {
+func NewTransactionService(repo db.DBClient, cache cache.Cache, producer mq.MQProducer) TransactionService {
 	return &transactionService{repo: repo, cache: cache, producer: producer}
 }
 

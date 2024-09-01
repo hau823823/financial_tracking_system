@@ -12,30 +12,49 @@ type Cache interface {
 	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error
 	Get(ctx context.Context, key string) (string, error)
 	Delete(ctx context.Context, key string) error
+	Close() error
 }
 
-// RedisCache 實現
-type RedisCache struct {
+// RedisConfig 用於封裝 Redis 的配置參數
+type RedisConfig struct {
+	RedisAddr     string
+	RedisPassword string
+	RedisDB       int
+}
+
+
+// Redis 實現 Cache 接口
+type Redis struct {
 	client *redis.Client
 }
 
-func NewRedisCache(addr, password string, db int) *RedisCache {
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: password,
-		DB:       db,
-	})
-	return &RedisCache{client: rdb}
+// NewCache 創建並返回一個 Cache 實例，並使用 Redis 作為緩存
+func NewCache(config RedisConfig) Cache {
+	return NewRedis(config)
 }
 
-func (r *RedisCache) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+// NewRedisCache 使用 RedisConfig 來初始化 RedisCache
+func NewRedis(config RedisConfig) *Redis {
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     config.RedisAddr,
+		Password: config.RedisPassword,
+		DB:       config.RedisDB,
+	})
+	return &Redis{client: rdb}
+}
+
+func (r *Redis) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
 	return r.client.Set(ctx, key, value, expiration).Err()
 }
 
-func (r *RedisCache) Get(ctx context.Context, key string) (string, error) {
+func (r *Redis) Get(ctx context.Context, key string) (string, error) {
 	return r.client.Get(ctx, key).Result()
 }
 
-func (r *RedisCache) Delete(ctx context.Context, key string) error {
+func (r *Redis) Delete(ctx context.Context, key string) error {
 	return r.client.Del(ctx, key).Err()
+}
+
+func (r *Redis) Close() error {
+	return r.client.Close()
 }
