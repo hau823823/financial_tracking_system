@@ -21,3 +21,4 @@
 go.workgit
 
 .idea
+*.env
