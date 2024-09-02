@@ -16,7 +16,7 @@ type MQProducer interface {
 
 // MQConsumer 定義 RabbitMQ 消費者接口
 type MQConsumer interface {
-	ConsumeMessages() error
+	ConsumeMessages() (<-chan amqp.Delivery, error)
 }
 
 // RabbitMQClient 實現了 MQProducer 和 MQConsumer 接口
@@ -26,24 +26,13 @@ type RabbitMQClient struct {
 	queue      amqp.Queue
 }
 
-// RabbitMQConsumer 實現了 MQConsumer 接口，使用依賴注入來處理消息
-type RabbitMQConsumer struct {
-	client  *RabbitMQClient
-	handler MessageHandler // 注入具體的消息處理邏輯
-}
-
-// MessageHandler 定義消息處理函數的接口
-type MessageHandler interface {
-	HandleMessage(body []byte) error
-}
-
 // NewMQProducer 創建並返回一個 MQProducer 實例，並使用 RabbitMQ 作為消息隊列
 func NewMQProducer(config config.RabbitMQConfig) (MQProducer, error) {
 	return NewRabbitMQProducer(config)
 }
 
-func NewMQConsumer(client *RabbitMQClient, handler MessageHandler) MQConsumer {
-	return NewRabbitMQConsumer(client, handler)
+func NewMQConsumer(client *RabbitMQClient) MQConsumer {
+	return client
 }
 
 // NewRabbitMQProducer 創建並返回一個 RabbitMQ 生產者實例
@@ -77,14 +66,6 @@ func NewRabbitMQProducer(config config.RabbitMQConfig) (*RabbitMQClient, error) 
 	}, nil
 }
 
-// NewRabbitMQConsumer 創建並返回一個 RabbitMQ 消費者實例
-func NewRabbitMQConsumer(client *RabbitMQClient, handler MessageHandler) *RabbitMQConsumer {
-	return &RabbitMQConsumer{
-		client:  client,
-		handler: handler,
-	}
-}
-
 // SendMessage 發送消息到 RabbitMQ
 func (c *RabbitMQClient) SendMessage(body []byte) error {
 	err := c.channel.Publish(
@@ -103,9 +84,9 @@ func (c *RabbitMQClient) SendMessage(body []byte) error {
 }
 
 // ConsumeMessages 消費 RabbitMQ 隊列中的消息
-func (c *RabbitMQConsumer) ConsumeMessages() error {
-	msgs, err := c.client.channel.Consume(
-		c.client.queue.Name, // queue
+func (c *RabbitMQClient) ConsumeMessages() (<-chan amqp.Delivery, error) {
+	msgs, err := c.channel.Consume(
+		c.queue.Name, // queue
 		"",                  // consumer
 		true,                // auto-ack
 		false,               // exclusive
@@ -114,19 +95,10 @@ func (c *RabbitMQConsumer) ConsumeMessages() error {
 		nil,                 // args
 	)
 	if err != nil {
-		return fmt.Errorf("failed to consume messages: %w", err)
+		return nil, fmt.Errorf("failed to consume messages: %w", err)
 	}
 
-	go func() {
-		for d := range msgs {
-			if err := c.handler.HandleMessage(d.Body); err != nil {
-				log.Printf("Failed to handle message: %v", err)
-			}
-		}
-	}()
-
-	log.Printf("Waiting for messages. To exit press CTRL+C")
-	select {}
+	return msgs, nil
 }
 
 // Close 關閉 RabbitMQ 連接和通道

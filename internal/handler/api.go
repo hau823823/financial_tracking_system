@@ -1,4 +1,4 @@
-package api
+package handler
 
 import (
 	"fintrack/internal/entity"
@@ -15,6 +15,18 @@ type TransactionHandler struct {
 
 func NewTransactionHandler(s service.TransactionService) *TransactionHandler {
 	return &TransactionHandler{Service: s}
+}
+
+// SetupRouter 設置 Gin 路由
+func (h *TransactionHandler) SetupRouter() *gin.Engine {
+	r := gin.Default()
+
+	r.POST("/transactions", h.AddTransaction)      // 新增交易紀錄
+	r.GET("/transactions", h.GetTransactions)      // 查詢交易紀錄
+	r.POST("/reconcile/import", h.ImportReconcile) // 匯入銀行或信用卡帳單
+	r.GET("/reports", h.GetReports)                // 生成並查詢財務報表
+
+	return r
 }
 
 // 接收用戶的交易記錄並將其發送至 RabbitMQ
