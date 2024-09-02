@@ -28,15 +28,15 @@ type RabbitMQClient struct {
 
 // NewMQProducer 創建並返回一個 MQProducer 實例，並使用 RabbitMQ 作為消息隊列
 func NewMQProducer(config config.RabbitMQConfig) (MQProducer, error) {
-	return NewRabbitMQProducer(config)
+	return NewRabbitMQClient(config)
 }
 
-func NewMQConsumer(client *RabbitMQClient) MQConsumer {
-	return client
+func NewMQConsumer(config config.RabbitMQConfig) (MQProducer, error)  {
+	return NewRabbitMQClient(config)
 }
 
-// NewRabbitMQProducer 創建並返回一個 RabbitMQ 生產者實例
-func NewRabbitMQProducer(config config.RabbitMQConfig) (*RabbitMQClient, error) {
+// NewRabbitMQProducer 創建並返回一個 RabbitMQ 實例
+func NewRabbitMQClient(config config.RabbitMQConfig) (*RabbitMQClient, error) {
 	conn, err := amqp.Dial(config.URL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
