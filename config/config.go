@@ -40,8 +40,8 @@ func init() {
 	viper.AutomaticEnv()
 	viper.SetConfigName("app")
 	viper.SetConfigType("env")
-	viper.AddConfigPath("./configs")
-	viper.AddConfigPath("../../configs")
+	viper.AddConfigPath("./config")
+	viper.AddConfigPath("../../config")
 
 	// 讀取配置文件
 	err = viper.ReadInConfig()
