@@ -15,6 +15,9 @@
 > [!NOTE]
 > Tech Stack：Golang、Gin、Gorm、Redis、RabbitMQ、MySQL、Wire DI
 
+> [!WARNING]
+> Architecture can and should be optimized
+
 ```markdown
 .
 ├── cmd
