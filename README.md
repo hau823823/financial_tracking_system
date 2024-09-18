@@ -267,6 +267,9 @@ graph TD;
 
 ## DB Table Design
 
+> [!WARNING]
+> DB Table can and should be optimized
+
 ### 1. Transactions Table
 
 > [!TIP]
